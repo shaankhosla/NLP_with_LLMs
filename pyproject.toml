@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "nlp_with_llms"}]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.9.16"
 nvidia-ml-py3 = "^7.352.0"
 pytorch-lightning = "^2.0.1.post0"
 transformers = "^4.28.0"
