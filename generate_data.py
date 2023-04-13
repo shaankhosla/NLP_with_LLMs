@@ -1,8 +1,8 @@
-import os
+## large portions of this adapted from https://docs.mosaicml.com/projects/streaming/en/stable/examples/synthetic_nlp.html
+
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 import json
 
