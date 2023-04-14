@@ -175,11 +175,12 @@ def train(args):
     # checkpointing: https://lightning.ai/docs/pytorch/stable/advanced/model_parallel.html#activation-checkpointing
     trainer = pl.Trainer(
         max_epochs=args.epochs,
-        accelerator="cpu",
+        accelerator="gpu",
         devices="auto",
         precision=16,
         accumulate_grad_batches=4,
         # strategy="ddp_sharded",
+        strategy='fsdp', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
