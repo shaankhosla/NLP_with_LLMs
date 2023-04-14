@@ -32,9 +32,6 @@ class T5Finetuner(pl.LightningModule):
         self.model.gradient_checkpointing_enable()
         self.cache_dir = args.cache
         # self.model = torch.compile(self.model)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            args.model_name, cache_dir=args.cache, use_fast=True
-        )
 
         self.train_data, self.val_data = train_data, val_data
 
@@ -42,37 +39,8 @@ class T5Finetuner(pl.LightningModule):
             ["rouge1", "rouge2", "rougeL"], use_stemmer=True
         )
 
-    def encode_text(self, context, text):
-        ctext = str(context)
-        ctext = " ".join(ctext.split())
-        text = str(text)
-        text = " ".join(text.split())
-        source = self.tokenizer.batch_encode_plus(
-            [ctext],
-            max_length=512,
-            truncation=True,
-            # pad_to_max_length=True,
-            padding="max_length",
-            return_tensors="pt",
-        )
-        target = self.tokenizer.batch_encode_plus(
-            [text],
-            max_length=150,
-            truncation=True,
-            # pad_to_max_length=True,
-            padding="max_length",
-            return_tensors="pt",
-        )
-        y = target["input_ids"]
-        target_id = y[:, :-1].contiguous()
-        target_label = y[:, 1:].clone().detach()
-        target_label[
-            y[:, 1:] == self.tokenizer.pad_token_id
-        ] = -100  # in case the labels are not provided, empty string
-        return source["input_ids"], source["attention_mask"], target_id, target_label
-
     def forward(self, batch, batch_idx):
-        source_ids, source_mask, target_ids, target_labels = self.encode_text(*batch)
+        source_ids, source_mask, target_ids, target_labels = batch[:4]
         return self.model(
             input_ids=source_ids,
             attention_mask=source_mask,
@@ -81,7 +49,6 @@ class T5Finetuner(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_idx):
-        print(batch)
         # accumulation: https://lightning.ai/docs/fabric/latest/advanced/gradient_accumulation.html
         loss = self(batch, batch_idx)[0]
         return {"loss": loss, "log": {"train_loss": loss}}
@@ -89,7 +56,7 @@ class T5Finetuner(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
 
-        profile_ids, _, summary_ids, _ = self.encode_text(*batch)
+        profile_ids, _, summary_ids, _ = batch
         true_summaries = [
             self.tokenizer.decode(
                 g, skip_special_tokens=True, clean_up_tokenization_spaces=True
@@ -152,23 +119,55 @@ class T5Finetuner(pl.LightningModule):
 
 
 class StreamingDataset(Dataset):
-    def __init__(self, path):
+    def __init__(self, path, model_name):
         self.path = path
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, cache_dir=args.cache, use_fast=True
+        )
 
     def __len__(self):
         return len(os.listdir(self.path))
+    
+    def encode_text(self, context, text):
+        ctext = str(context)
+        ctext = " ".join(ctext.split())
+        text = str(text)
+        text = " ".join(text.split())
+        source = self.tokenizer.batch_encode_plus(
+            [ctext],
+            max_length=512,
+            truncation=True,
+            # pad_to_max_length=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        target = self.tokenizer.batch_encode_plus(
+            [text],
+            max_length=150,
+            truncation=True,
+            # pad_to_max_length=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        y = target["input_ids"]
+        target_id = y[:, :-1].contiguous()
+        target_label = y[:, 1:].clone().detach()
+        target_label[
+            y[:, 1:] == self.tokenizer.pad_token_id
+        ] = -100  # in case the labels are not provided, empty string
+        return source["input_ids"], source["attention_mask"], target_id, target_label
 
     def __getitem__(self, idx):
         file_path = os.path.join(self.path, str(idx) + ".json")
         with open(file_path, "r") as infile:
             data = json.load(infile)
         number, words = str(data["number"]), data["words"]
-        return number, words
+        return self.encode_text(number, words)
 
 
 def train(args):
-    train_data = StreamingDataset(os.path.join(args.data, "train"))
-    val_data = StreamingDataset(os.path.join(args.data, "val"))
+    train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
+    val_data = StreamingDataset(os.path.join(args.data, "val"), args.model_name)
 
     summarizer = T5Finetuner(args, train_data, val_data)
     # https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html?highlight=gradient%20accumulation
