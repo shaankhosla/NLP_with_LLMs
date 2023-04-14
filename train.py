@@ -27,7 +27,7 @@ class T5Finetuner(pl.LightningModule):
             self.args.model_name,
             cache_dir=args.cache,
             # gradient_checkpointing=True,
-            torch_dtype=torch.float16,
+            # torch_dtype=torch.float16,
         )
         self.model.gradient_checkpointing_enable()
         self.cache_dir = args.cache
@@ -176,7 +176,7 @@ def train(args):
         max_epochs=args.epochs,
         accelerator="gpu",
         devices="auto",
-        precision='16-mixed',
+        # precision='16-mixed',
         accumulate_grad_batches=4,
         # strategy="ddp_sharded",
         strategy='fsdp', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
