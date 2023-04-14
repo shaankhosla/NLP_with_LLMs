@@ -176,7 +176,7 @@ def train(args):
         max_epochs=args.epochs,
         accelerator="gpu",
         devices="auto",
-        precision=16,
+        precision='16-mixed',
         accumulate_grad_batches=4,
         # strategy="ddp_sharded",
         strategy='fsdp', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
