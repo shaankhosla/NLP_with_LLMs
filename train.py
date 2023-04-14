@@ -5,6 +5,8 @@ from rouge_score import rouge_scorer
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup, AdamW
 import os
+from torch.utils.data import TensorDataset
+
 import torch
 
 # from fairscale.nn import (
@@ -29,6 +31,9 @@ class T5Finetuner(pl.LightningModule):
             # gradient_checkpointing=True,
             # torch_dtype=torch.float16,
         )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            args.model_name, cache_dir=args.cache, use_fast=True
+        )
         self.model.gradient_checkpointing_enable()
         self.cache_dir = args.cache
         # self.model = torch.compile(self.model)
@@ -40,7 +45,8 @@ class T5Finetuner(pl.LightningModule):
         )
 
     def forward(self, batch, batch_idx):
-        source_ids, source_mask, target_ids, target_labels = batch[:4]
+        source_ids, source_mask, target_ids, target_labels = batch
+
         return self.model(
             input_ids=source_ids,
             attention_mask=source_mask,
@@ -93,6 +99,7 @@ class T5Finetuner(pl.LightningModule):
             batch_size=self.args.batch_size,
             num_workers=os.cpu_count(),
             pin_memory=True,
+            collate_fn=collate_fn
         )
 
     def val_dataloader(self):
@@ -101,6 +108,7 @@ class T5Finetuner(pl.LightningModule):
             batch_size=self.args.batch_size,
             num_workers=os.cpu_count(),
             pin_memory=True,
+            collate_fn=collate_fn
         )
 
     def configure_optimizers(self):
@@ -155,6 +163,7 @@ class StreamingDataset(Dataset):
         target_label[
             y[:, 1:] == self.tokenizer.pad_token_id
         ] = -100  # in case the labels are not provided, empty string
+        # return torch.tensor([1, 2, 3]), torch.tensor([4, 5, 6]), torch.tensor([7, 8, 9]), torch.tensor([10, 11, 12])
         return source["input_ids"], source["attention_mask"], target_id, target_label
 
     def __getitem__(self, idx):
@@ -164,6 +173,12 @@ class StreamingDataset(Dataset):
         number, words = str(data["number"]), data["words"]
         return self.encode_text(number, words)
 
+def collate_fn(batch):
+    input_ids = torch.stack([torch.flatten(x[0]) for x in batch]) 
+    sequence_mask = torch.stack([torch.flatten(x[1]) for x in batch]) 
+    target_ids = torch.stack([torch.flatten(x[2]) for x in batch]) 
+    target_label = torch.stack([torch.flatten(x[3]) for x in batch]) 
+    return input_ids, sequence_mask, target_ids, target_label
 
 def train(args):
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
@@ -176,9 +191,8 @@ def train(args):
         max_epochs=args.epochs,
         accelerator="gpu",
         devices="auto",
-        # precision='16-mixed',
+        precision='16-mixed',
         accumulate_grad_batches=4,
-        # strategy="ddp_sharded",
         strategy='fsdp', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
@@ -198,6 +212,6 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
     parser.add_argument("-e", "--epochs", default=15)
-    parser.add_argument("-b", "--batch_size", default=4)
+    parser.add_argument("-b", "--batch_size", default=1)
     args = parser.parse_args()
     train(args)
