@@ -193,7 +193,7 @@ def train(args):
         devices="auto",
         precision='16-mixed',
         accumulate_grad_batches=4,
-        strategy='fsdp', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
+        strategy='deepspeed_stage_2', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
@@ -212,6 +212,6 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
     parser.add_argument("-e", "--epochs", default=15)
-    parser.add_argument("-b", "--batch_size", default=1)
+    parser.add_argument("-b", "--batch_size", default=16)
     args = parser.parse_args()
     train(args)
