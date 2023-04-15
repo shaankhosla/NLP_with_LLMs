@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup, AdamW
 import os
 from peft import get_peft_model, LoraConfig, TaskType
+import generate_data
 
 
 import torch
@@ -166,6 +167,7 @@ def collate_fn(batch):
 
 
 def train(args):
+    generate_data.main(args.train_size, args.val_size)
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
     val_data = StreamingDataset(os.path.join(args.data, "val"), args.model_name)
 

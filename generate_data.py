@@ -131,6 +131,7 @@ def create_folder_structure():
 
 
 def main(num_train: int, num_val: int):
+    print(f"Generating synthetic dataset ({num_train} train, {num_val} val)...")
     train_samples, val_samples = get_dataset(num_train, num_val)
 
     create_folder_structure()
@@ -150,7 +151,4 @@ if __name__ == "__main__":
     num_val_samples = 2000  # 2k samples
 
     # Create the samples.
-    print(
-        f"Generating synthetic dataset ({num_train_samples} train, {num_val_samples} val)..."
-    )
     main(num_train_samples, num_val_samples)
