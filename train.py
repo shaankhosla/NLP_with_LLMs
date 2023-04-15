@@ -5,7 +5,8 @@ from rouge_score import rouge_scorer
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup, AdamW
 import os
-from torch.utils.data import TensorDataset
+from peft import get_peft_model, LoraConfig, TaskType
+
 
 import torch
 
@@ -28,21 +29,31 @@ class T5Finetuner(pl.LightningModule):
         self.model = T5ForConditionalGeneration.from_pretrained(
             self.args.model_name,
             cache_dir=args.cache,
-            # gradient_checkpointing=True,
-            # torch_dtype=torch.float16,
         )
         self.tokenizer = AutoTokenizer.from_pretrained(
             args.model_name, cache_dir=args.cache, use_fast=True
         )
         self.model.gradient_checkpointing_enable()
         self.cache_dir = args.cache
-        # self.model = torch.compile(self.model)
 
         self.train_data, self.val_data = train_data, val_data
 
         self.scorer = rouge_scorer.RougeScorer(
             ["rouge1", "rouge2", "rougeL"], use_stemmer=True
         )
+        self.get_peft()
+
+    def get_peft(self):
+        self.model.enable_input_require_grads()
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_2_SEQ_LM,
+            inference_mode=False,
+            r=8,
+            lora_alpha=32,
+            lora_dropout=0.1,
+        )
+        self.model = get_peft_model(self.model, peft_config)
+        self.model.print_trainable_parameters()
 
     def forward(self, batch, batch_idx):
         source_ids, source_mask, target_ids, target_labels = batch
@@ -62,36 +73,9 @@ class T5Finetuner(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
 
-        profile_ids, _, summary_ids, _ = batch
-        true_summaries = [
-            self.tokenizer.decode(
-                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
-            )
-            for g in summary_ids
-        ]
-        pred_ids = self.model.generate(profile_ids)
-        predictions = [
-            self.tokenizer.decode(
-                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
-            )
-            for g in pred_ids
-        ]
-        scores = self.scorer.score(true_summaries[0], predictions[0])
         return {
             "loss": loss,
-            "log": {
-                "rougeL": scores["rougeL"].precision,
-                "rouge1": scores["rouge1"].precision,
-            },
         }
-
-    # def on_validation_epoch_end(self):
-    #     checkpoint_filename = f"{self.logger.log_dir}_epoch_{self.trainer.current_epoch}.ckpt"
-    #     self.trainer.save_checkpoint(checkpoint_filename)
-    #     print("Saved checkpoint:", checkpoint_filename)
-    #     self.logger.experiment.log_artifact(
-    #         run_id=self.logger.run_id, local_path=checkpoint_filename
-    #     )
 
     def train_dataloader(self):
         return DataLoader(
@@ -99,7 +83,7 @@ class T5Finetuner(pl.LightningModule):
             batch_size=self.args.batch_size,
             num_workers=os.cpu_count(),
             pin_memory=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
         )
 
     def val_dataloader(self):
@@ -108,7 +92,7 @@ class T5Finetuner(pl.LightningModule):
             batch_size=self.args.batch_size,
             num_workers=os.cpu_count(),
             pin_memory=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
         )
 
     def configure_optimizers(self):
@@ -123,7 +107,6 @@ class T5Finetuner(pl.LightningModule):
             / self.args.batch_size,
         )
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
-    
 
 
 class StreamingDataset(Dataset):
@@ -135,7 +118,7 @@ class StreamingDataset(Dataset):
 
     def __len__(self):
         return len(os.listdir(self.path))
-    
+
     def encode_text(self, context, text):
         ctext = str(context)
         ctext = " ".join(ctext.split())
@@ -173,12 +156,14 @@ class StreamingDataset(Dataset):
         number, words = str(data["number"]), data["words"]
         return self.encode_text(number, words)
 
+
 def collate_fn(batch):
-    input_ids = torch.stack([torch.flatten(x[0]) for x in batch]) 
-    sequence_mask = torch.stack([torch.flatten(x[1]) for x in batch]) 
-    target_ids = torch.stack([torch.flatten(x[2]) for x in batch]) 
-    target_label = torch.stack([torch.flatten(x[3]) for x in batch]) 
+    input_ids = torch.stack([torch.flatten(x[0]) for x in batch])
+    sequence_mask = torch.stack([torch.flatten(x[1]) for x in batch])
+    target_ids = torch.stack([torch.flatten(x[2]) for x in batch])
+    target_label = torch.stack([torch.flatten(x[3]) for x in batch])
     return input_ids, sequence_mask, target_ids, target_label
+
 
 def train(args):
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
@@ -191,9 +176,9 @@ def train(args):
         max_epochs=args.epochs,
         accelerator="gpu",
         devices="auto",
-        precision='16-mixed',
+        precision="16-mixed",
         accumulate_grad_batches=4,
-        strategy='deepspeed_stage_2', # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
+        strategy="deepspeed_stage_2",  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
