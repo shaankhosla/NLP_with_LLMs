@@ -1183,6 +1183,32 @@ files = [
 ]
 
 [[package]]
+name = "peft"
+version = "0.2.0"
+description = "Parameter-Efficient Fine-Tuning (PEFT)"
+category = "main"
+optional = false
+python-versions = ">=3.7.0"
+files = [
+    {file = "peft-0.2.0-py3-none-any.whl", hash = "sha256:308657f88806681fe503b9554dc8a8e419b7049b461bceadbd4eece6e784cff2"},
+    {file = "peft-0.2.0.tar.gz", hash = "sha256:ce33f484c7038190705b69e4d2289230c7c1819c1084781483ac8e118f0a71af"},
+]
+
+[package.dependencies]
+accelerate = "*"
+numpy = ">=1.17"
+packaging = ">=20.0"
+psutil = "*"
+pyyaml = "*"
+torch = ">=1.13.0"
+transformers = "*"
+
+[package.extras]
+dev = ["black (>=22.0,<23.0)", "hf-doc-builder", "ruff (>=0.0.241)"]
+docs-specific = ["hf-doc-builder"]
+quality = ["black (>=22.0,<23.0)", "ruff (>=0.0.241)"]
+
+[[package]]
 name = "pillow"
 version = "9.5.0"
 description = "Python Imaging Library (Fork)"
@@ -2104,4 +2130,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9.16"
-content-hash = "9c15de9345a888f43196218152539a5d43f5a272a992ed96cca9854427beabac"
+content-hash = "cb6cc217ea6d23f10783ff0234788c7a3d58b657d1f79297b73e50a4fe464ec0"
