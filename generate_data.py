@@ -4,18 +4,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from tqdm import tqdm
-import json
-
-
-# the location of the "remote" streaming dataset (`sds`).
-# Upload `out_root` to your cloud storage provider of choice.
-out_train = "./train"
-out_val = "./val"
-
-
-# toggle shuffling in dataloader
-shuffle_train = True
-shuffle_val = False
+import json, os
 
 
 ones = (
@@ -127,8 +116,24 @@ def get_dataset(
     return train_samples, val_samples
 
 
+def create_folder_structure():
+    if not os.path.isdir("./data/"):
+        os.mkdir("./data/")
+    if not os.path.isdir("./data/train/"):
+        os.mkdir("./data/train/")
+    if not os.path.isdir("./data/val/"):
+        os.mkdir("./data/val/")
+
+    for f in os.listdir("./data/train/"):
+        os.remove(os.path.join("./data/train", f))
+    for f in os.listdir("./data/val/"):
+        os.remove(os.path.join("./data/val", f))
+
+
 def main(num_train: int, num_val: int):
     train_samples, val_samples = get_dataset(num_train, num_val)
+
+    create_folder_structure()
 
     for i in range(len(train_samples)):
         with open(f"./data/train/{i}.json", "w") as outfile:
