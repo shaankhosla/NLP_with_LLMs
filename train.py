@@ -18,6 +18,7 @@ import argparse
 from pytorch_lightning.loggers import TensorBoardLogger
 import os, json
 from torch.utils.data import Dataset
+from gpu_utilities import print_gpu_utilization
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
@@ -147,7 +148,6 @@ class StreamingDataset(Dataset):
         target_label[
             y[:, 1:] == self.tokenizer.pad_token_id
         ] = -100  # in case the labels are not provided, empty string
-        # return torch.tensor([1, 2, 3]), torch.tensor([4, 5, 6]), torch.tensor([7, 8, 9]), torch.tensor([10, 11, 12])
         return source["input_ids"], source["attention_mask"], target_id, target_label
 
     def __getitem__(self, idx):
@@ -187,6 +187,7 @@ def train(args):
         ),
     )
     trainer.fit(summarizer)
+    print_gpu_utilization()
 
 
 if __name__ == "__main__":
@@ -198,7 +199,7 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--val_size", default=2000)
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
-    parser.add_argument("-e", "--epochs", default=15)
+    parser.add_argument("-e", "--epochs", default=1)
     parser.add_argument("-b", "--batch_size", default=16)
     args = parser.parse_args()
     train(args)
