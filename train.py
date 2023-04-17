@@ -70,14 +70,12 @@ class T5Finetuner(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # accumulation: https://lightning.ai/docs/fabric/latest/advanced/gradient_accumulation.html
         loss = self(batch, batch_idx)[0]
-        return {"loss": loss, "log": {"train_loss": loss}}
+        return {'loss': loss, 'log': {'train_loss': loss}}
 
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
 
-        return {
-            "loss": loss,
-        }
+        return {'loss': loss}
 
     def train_dataloader(self):
         return DataLoader(
@@ -165,8 +163,8 @@ def collate_fn(batch):
     target_label = torch.stack([torch.flatten(x[3]) for x in batch])
     return input_ids, sequence_mask, target_ids, target_label
 
-
-def train(args):
+        
+def start_training(args):
     generate_data.main(args.train_size, args.val_size)
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
     val_data = StreamingDataset(os.path.join(args.data, "val"), args.model_name)
@@ -180,11 +178,12 @@ def train(args):
         devices="auto",
         precision="16-mixed",
         accumulate_grad_batches=4,
-        strategy="deepspeed_stage_2",  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
+        strategy="deepspeed_stage_3",  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
         ),
+        log_every_n_steps=1,
     )
     trainer.fit(summarizer)
     print_gpu_utilization()
@@ -195,11 +194,11 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--data", default="./data/")
     parser.add_argument("-c", "--cache", default="./cache/")
     parser.add_argument("-o", "--output", default="./output/")
-    parser.add_argument("-t", "--train_size", default=10_000)
-    parser.add_argument("-v", "--val_size", default=2000)
+    parser.add_argument("-t", "--train_size", default=1_000)
+    parser.add_argument("-v", "--val_size", default=200)
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
     parser.add_argument("-e", "--epochs", default=1)
     parser.add_argument("-b", "--batch_size", default=16)
     args = parser.parse_args()
-    train(args)
+    start_training(args)
