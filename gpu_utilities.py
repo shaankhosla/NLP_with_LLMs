@@ -17,4 +17,3 @@ def print_gpu_utilization():
         print("Device", i, ":", nvmlDeviceGetName(handle))
         print(f"GPU memory occupied: {info.used//1024**2} MB.")
     torch.cuda.empty_cache()
-

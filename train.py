@@ -3,10 +3,12 @@ from transformers import T5ForConditionalGeneration
 from transformers import AutoTokenizer
 from rouge_score import rouge_scorer
 from torch.utils.data import DataLoader
-from transformers import get_linear_schedule_with_warmup, AdamW
+from transformers import get_linear_schedule_with_warmup
+from torch.optim import AdamW
 import os
 from peft import get_peft_model, LoraConfig, TaskType
 import generate_data
+from accelerate import Accelerator
 
 
 import torch
@@ -70,12 +72,32 @@ class T5Finetuner(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # accumulation: https://lightning.ai/docs/fabric/latest/advanced/gradient_accumulation.html
         loss = self(batch, batch_idx)[0]
-        return {'loss': loss, 'log': {'train_loss': loss}}
+        return {"loss": loss, "log": {"train_loss": loss}}
 
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
-
-        return {'loss': loss}
+        return {"loss": loss}
+    
+    def predict_step(self, batch, batch_idx):
+        return self(batch, batch_idx)
+        profile_ids, _, summary_ids, _ = batch
+        true_summaries = [
+            self.tokenizer.decode(
+                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
+            for g in summary_ids
+        ]
+        print(true_summaries)
+        self.model.eval()
+        pred_ids = self.model.generate(profile_ids)
+        predictions = [
+            self.tokenizer.decode(
+                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
+            )
+            for g in pred_ids
+        ]
+        print(predictions)
+        scores = self.scorer.score(true_summaries[0], predictions[0])
 
     def train_dataloader(self):
         return DataLoader(
@@ -163,7 +185,7 @@ def collate_fn(batch):
     target_label = torch.stack([torch.flatten(x[3]) for x in batch])
     return input_ids, sequence_mask, target_ids, target_label
 
-        
+
 def start_training(args):
     generate_data.main(args.train_size, args.val_size)
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
@@ -185,8 +207,56 @@ def start_training(args):
         ),
         log_every_n_steps=1,
     )
+    
     trainer.fit(summarizer)
-    print_gpu_utilization()
+    from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+    model = load_state_dict_from_zero_checkpoint(trainer.model, "/home/paperspace/NLP_with_LLMs/output/logs/t5-small/version_112/checkpoints/epoch=0-step=1.ckpt/")
+
+    
+    torch.load("/home/paperspace/NLP_with_LLMs/output/logs/t5-small/version_112/checkpoints/epoch=0-step=1.ckpt/checkpoint/zero_pp_rank_0_mp_rank_00_model_states.pt", map_location='cpu')
+    
+    summarizer = summarizer.model
+    torch.save(
+    summarizer.input_embeddings.state_dict(),
+    "input_embeddings.pt"
+    )
+    torch.save(summarizer.mlp.state_dict(), "mlp.pt")
+    
+    # m = trainer.get_model()
+    # print_gpu_utilization()
+    # test_data = StreamingDataset(os.path.join(args.data, "train"), 't5-small')
+    # x = DataLoader(
+    #         test_data,
+    #         batch_size=4,
+    #         num_workers=os.cpu_count(),
+    #         pin_memory=True,
+    #         collate_fn=collate_fn,
+    #     )
+    # for batch in x:
+    #     profile_ids, _, summary_ids, _ = batch
+
+    #     pred_ids = summarizer.model.generate(profile_ids)
+
+    
+
+    from pytorch_lightning.utilities.deepspeed import (
+        convert_zero_checkpoint_to_fp32_state_dict,
+    )
+    # zero_params = torch.load("./output/logs/t5-small/version_79/checkpoints/epoch=0-step=1.ckpt")
+    # tokenizer = AutoTokenizer.from_pretrained("t5-small", cache_dir="./cache/")
+    convert_zero_checkpoint_to_fp32_state_dict(
+        "./output/logs/t5-small/version_79/checkpoints/epoch=0-step=1.ckpt",
+        "lightning_model",
+    )
+    # val_model = T5Finetuner.load_from_checkpoint("lightning_model")
+    # source_id, source_mask, _, _ = summarizer.encode_text("1234", "")
+    # with torch.no_grad():
+    #     generated_ids = val_model.generate(source_id)
+    # prediction = [
+    #     tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+    #     for g in generated_ids
+    # ]
+    # print(prediction)
 
 
 if __name__ == "__main__":
@@ -194,8 +264,8 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--data", default="./data/")
     parser.add_argument("-c", "--cache", default="./cache/")
     parser.add_argument("-o", "--output", default="./output/")
-    parser.add_argument("-t", "--train_size", default=1_000)
-    parser.add_argument("-v", "--val_size", default=200)
+    parser.add_argument("-t", "--train_size", default=100)
+    parser.add_argument("-v", "--val_size", default=20)
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
     parser.add_argument("-e", "--epochs", default=1)
