@@ -8,14 +8,8 @@ from torch.optim import AdamW
 import os
 from peft import get_peft_model, LoraConfig, TaskType
 import generate_data
-from accelerate import Accelerator
-
-
+from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint, get_fp32_state_dict_from_zero_checkpoint
 import torch
-
-# from fairscale.nn import (
-#     checkpoint_wrapper,
-# )  # https://neptune.ai/blog/multi-gpu-model-training-monitoring-and-optimizing
 import argparse
 from pytorch_lightning.loggers import TensorBoardLogger
 import os, json
@@ -77,27 +71,6 @@ class T5Finetuner(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
         return {"loss": loss}
-    
-    def predict_step(self, batch, batch_idx):
-        return self(batch, batch_idx)
-        profile_ids, _, summary_ids, _ = batch
-        true_summaries = [
-            self.tokenizer.decode(
-                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
-            )
-            for g in summary_ids
-        ]
-        print(true_summaries)
-        self.model.eval()
-        pred_ids = self.model.generate(profile_ids)
-        predictions = [
-            self.tokenizer.decode(
-                g, skip_special_tokens=True, clean_up_tokenization_spaces=True
-            )
-            for g in pred_ids
-        ]
-        print(predictions)
-        scores = self.scorer.score(true_summaries[0], predictions[0])
 
     def train_dataloader(self):
         return DataLoader(
@@ -200,64 +173,23 @@ def start_training(args):
         devices="auto",
         precision="16-mixed",
         accumulate_grad_batches=4,
-        strategy="deepspeed_stage_3",  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
+        strategy='deepspeed_stage_3',  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
         ),
         log_every_n_steps=1,
     )
-    
     trainer.fit(summarizer)
-    from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
-    model = load_state_dict_from_zero_checkpoint(trainer.model, "/home/paperspace/NLP_with_LLMs/output/logs/t5-small/version_112/checkpoints/epoch=0-step=1.ckpt/")
-
+    print_gpu_utilization()
     
-    torch.load("/home/paperspace/NLP_with_LLMs/output/logs/t5-small/version_112/checkpoints/epoch=0-step=1.ckpt/checkpoint/zero_pp_rank_0_mp_rank_00_model_states.pt", map_location='cpu')
+    ckpt_path = f'./output/logs/{args.model_name}/version_{trainer.logger.version}/checkpoints/epoch={trainer.current_epoch-1}-step={trainer.global_step}.ckpt'
+    model = load_state_dict_from_zero_checkpoint(trainer.model, ckpt_path)
+    torch.save(model.state_dict(), './model.bin')
     
-    summarizer = summarizer.model
-    torch.save(
-    summarizer.input_embeddings.state_dict(),
-    "input_embeddings.pt"
-    )
-    torch.save(summarizer.mlp.state_dict(), "mlp.pt")
-    
-    # m = trainer.get_model()
-    # print_gpu_utilization()
-    # test_data = StreamingDataset(os.path.join(args.data, "train"), 't5-small')
-    # x = DataLoader(
-    #         test_data,
-    #         batch_size=4,
-    #         num_workers=os.cpu_count(),
-    #         pin_memory=True,
-    #         collate_fn=collate_fn,
-    #     )
-    # for batch in x:
-    #     profile_ids, _, summary_ids, _ = batch
-
-    #     pred_ids = summarizer.model.generate(profile_ids)
-
-    
-
-    from pytorch_lightning.utilities.deepspeed import (
-        convert_zero_checkpoint_to_fp32_state_dict,
-    )
-    # zero_params = torch.load("./output/logs/t5-small/version_79/checkpoints/epoch=0-step=1.ckpt")
-    # tokenizer = AutoTokenizer.from_pretrained("t5-small", cache_dir="./cache/")
-    convert_zero_checkpoint_to_fp32_state_dict(
-        "./output/logs/t5-small/version_79/checkpoints/epoch=0-step=1.ckpt",
-        "lightning_model",
-    )
-    # val_model = T5Finetuner.load_from_checkpoint("lightning_model")
-    # source_id, source_mask, _, _ = summarizer.encode_text("1234", "")
-    # with torch.no_grad():
-    #     generated_ids = val_model.generate(source_id)
-    # prediction = [
-    #     tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-    #     for g in generated_ids
-    # ]
-    # print(prediction)
-
+    # state_dict = get_fp32_state_dict_from_zero_checkpoint("./output/logs/t5-small/version_144/checkpoints/epoch=0-step=1.ckpt/") # already on cpu
+    # model = model.cpu() 
+    # model.load_state_dict(state_dict)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
