@@ -187,20 +187,17 @@ def start_training(args):
     model = load_state_dict_from_zero_checkpoint(trainer.model, ckpt_path)
     torch.save(model.state_dict(), './model.bin')
     
-    # state_dict = get_fp32_state_dict_from_zero_checkpoint("./output/logs/t5-small/version_144/checkpoints/epoch=0-step=1.ckpt/") # already on cpu
-    # model = model.cpu() 
-    # model.load_state_dict(state_dict)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--data", default="./data/")
     parser.add_argument("-c", "--cache", default="./cache/")
     parser.add_argument("-o", "--output", default="./output/")
-    parser.add_argument("-t", "--train_size", default=100)
-    parser.add_argument("-v", "--val_size", default=20)
+    parser.add_argument("-t", "--train_size", default=10_000)
+    parser.add_argument("-v", "--val_size", default=200)
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
-    parser.add_argument("-e", "--epochs", default=1)
+    parser.add_argument("-e", "--epochs", default=3)
     parser.add_argument("-b", "--batch_size", default=16)
     args = parser.parse_args()
     start_training(args)

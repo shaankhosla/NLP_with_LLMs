@@ -1,9 +1,6 @@
 import torch
 from train import T5Finetuner
 from transformers import AutoTokenizer
-from pytorch_lightning.utilities.deepspeed import (
-    convert_zero_checkpoint_to_fp32_state_dict,
-)
 from transformers import T5ForConditionalGeneration
 
 
@@ -70,7 +67,7 @@ if __name__ == "__main__":
         "./model.bin",
     )
     output = model.generate_prediction(
-        """one hundred thirteen
+        """4463
         """
     )
     print(output)
