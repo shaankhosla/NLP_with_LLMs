@@ -3,17 +3,13 @@ from transformers import T5ForConditionalGeneration
 from transformers import AutoTokenizer
 from rouge_score import rouge_scorer
 from torch.utils.data import DataLoader
-from transformers import get_linear_schedule_with_warmup, AdamW
+from transformers import get_linear_schedule_with_warmup
+from torch.optim import AdamW
 import os
 from peft import get_peft_model, LoraConfig, TaskType
 import generate_data
-
-
+from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint, get_fp32_state_dict_from_zero_checkpoint
 import torch
-
-# from fairscale.nn import (
-#     checkpoint_wrapper,
-# )  # https://neptune.ai/blog/multi-gpu-model-training-monitoring-and-optimizing
 import argparse
 from pytorch_lightning.loggers import TensorBoardLogger
 import os, json
@@ -70,12 +66,11 @@ class T5Finetuner(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # accumulation: https://lightning.ai/docs/fabric/latest/advanced/gradient_accumulation.html
         loss = self(batch, batch_idx)[0]
-        return {'loss': loss, 'log': {'train_loss': loss}}
+        return {"loss": loss, "log": {"train_loss": loss}}
 
     def validation_step(self, batch, batch_idx):
         loss = self(batch, batch_idx)[0]
-
-        return {'loss': loss}
+        return {"loss": loss}
 
     def train_dataloader(self):
         return DataLoader(
@@ -163,7 +158,7 @@ def collate_fn(batch):
     target_label = torch.stack([torch.flatten(x[3]) for x in batch])
     return input_ids, sequence_mask, target_ids, target_label
 
-        
+
 def start_training(args):
     generate_data.main(args.train_size, args.val_size)
     train_data = StreamingDataset(os.path.join(args.data, "train"), args.model_name)
@@ -178,7 +173,7 @@ def start_training(args):
         devices="auto",
         precision="16-mixed",
         accumulate_grad_batches=4,
-        strategy="deepspeed_stage_3",  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
+        strategy='deepspeed_stage_3',  # https://lightning.ai/docs/pytorch/latest/extensions/strategy.html#:~:text=The%20Strategy%20in%20PyTorch%20Lightning,%2C%20broadcast%2C%20and%20so%20on.
         check_val_every_n_epoch=1,
         logger=TensorBoardLogger(
             os.path.join(args.output, "logs"), name=args.model_name
@@ -187,18 +182,22 @@ def start_training(args):
     )
     trainer.fit(summarizer)
     print_gpu_utilization()
-
+    
+    ckpt_path = f'./output/logs/{args.model_name}/version_{trainer.logger.version}/checkpoints/epoch={trainer.current_epoch-1}-step={trainer.global_step}.ckpt'
+    model = load_state_dict_from_zero_checkpoint(trainer.model, ckpt_path)
+    torch.save(model.state_dict(), './model.bin')
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--data", default="./data/")
     parser.add_argument("-c", "--cache", default="./cache/")
     parser.add_argument("-o", "--output", default="./output/")
-    parser.add_argument("-t", "--train_size", default=1_000)
+    parser.add_argument("-t", "--train_size", default=10_000)
     parser.add_argument("-v", "--val_size", default=200)
     parser.add_argument("-m", "--model_name", default="t5-small")
     parser.add_argument("-l", "--lr", default=1e-5)
-    parser.add_argument("-e", "--epochs", default=1)
+    parser.add_argument("-e", "--epochs", default=3)
     parser.add_argument("-b", "--batch_size", default=16)
     args = parser.parse_args()
     start_training(args)
