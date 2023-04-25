@@ -1,6 +1,10 @@
 # NLP_with_LLMs
 
-To generate data and train model run the following:
+
+To install Poetry run: `curl -sSL https://install.python-poetry.org | python3 -`
+
+
+To generate data and train model run the following in the repo:
 
 1. `poetry install`
 
