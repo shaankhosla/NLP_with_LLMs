@@ -8,7 +8,9 @@ To generate data and train model run the following in the repo:
 
 1. `poetry install`
 
-2. `poetry run python generate_data.py`
 
-3. `poetry run python train.py`
+1.5 You may have to run `poetry config experimental.new-installer false` if the installer gets stuck
+
+
+2. `poetry run python train.py`
 
