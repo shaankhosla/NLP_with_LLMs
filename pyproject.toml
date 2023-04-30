@@ -20,7 +20,8 @@ deepspeed = "^0.9.1"
 
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.3.0"
+black = {extras = ["jupyter"], version = "^23.3.0"}
+ruff = "^0.0.263"
 
 [build-system]
 requires = ["poetry-core"]
