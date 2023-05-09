@@ -173,8 +173,10 @@ def start_training(args):
     convert_zero_checkpoint_to_fp32_state_dict(ckpt_path, "lightning_model.pt")
     training_model = T5Finetuner.load_from_checkpoint("lightning_model.pt")
     training_model.model.save_pretrained("digit_conversion")
-    training_model.model.push_to_hub("digit_conversion")
-    training_model.tokenizer.push_to_hub("digit_conversion")
+    
+    # run `huggingface-cli login` or `poetry run huggingface-cli login`
+    # training_model.model.push_to_hub("digit_conversion")
+    # training_model.tokenizer.push_to_hub("digit_conversion")
 
 
 if __name__ == "__main__":
